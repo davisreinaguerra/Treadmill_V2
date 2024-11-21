@@ -5,6 +5,7 @@
 prog::prog(int pin) {
   pinMode(pin, OUTPUT);
   _pin = pin;
+  digitalWrite(_pin, LOW);
 }
 
 void prog::prog_on() {

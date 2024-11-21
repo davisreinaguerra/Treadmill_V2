@@ -1,3 +1,9 @@
+// Audio Libraries
+/* #include <SPI.h>
+#include <Adafruit_VS1053.h>
+#include <SD.h>
+*/
+
 // Custom Classes
 #include "lick_sensor.h"
 #include "solenoid.h"
@@ -6,33 +12,46 @@
 #include "LED.h"
 #include "probabilityFunctions.h"
 
+/*
+// MusicMaker Shield
+#define SHIELD_RESET  -1      // VS1053 reset pin (unused!)
+#define SHIELD_CS     7      // VS1053 chip select pin (output)
+#define SHIELD_DCS    6      // VS1053 Data/command select pin (output)
+#define CARDCS 4     // Card chip select pin
+#define DREQ 3       // VS1053 Data request, ideally an Interrupt pin
+
+Adafruit_VS1053_FilePlayer musicPlayer = Adafruit_VS1053_FilePlayer(SHIELD_RESET, SHIELD_CS, SHIELD_DCS, DREQ, CARDCS);
+*/
+
 // Menu indices
-int Trial = 0;
-int Type = 1;
-int Event = 2;
-int Time = 3;
+int Trial_idx = 0;
+int Type_idx = 1;
+int Event_idx = 2;
+int Time_idx = 3;
 
-soundfiles_list = {
-  "1kHz.wav",
-  "2kHz.wav",
-  "3kHz.wav",
-  "4kHz.wav",
-  "5kHz.wav"
-}
+/*
+const char *soundfiles_list[] = {
+  "/1kHz.wav",
+  "/2kHz.wav",
+  "/3kHz.wav",
+  "/4kHz.wav",
+  "/5kHz.wav"
+};
+*/
 
-trial_typenames = {
+String trial_typenames[] = {
   "REWARD",
   "reward",
   "AIRPUFF",
   "airpuff",
   "zilch"
-}
+};
 
 // Initializations
 long experiment_start_time;
 long trial_start_time;
 long current_trial;
-String choice;
+int type;
 
 // Pin Assignments
 trig trig1(2);                  // D2   Trig1
@@ -57,62 +76,40 @@ String updatable_menu[4] = {"", "", "", ""};
 // Parameters
 struct configurable {
 
-  String session;
-  String animal_code;
   int n_trials;
   int cs_delay;
 
 } configurable;
 
-struct fixed {
+// Fixed
+int big_reward = 400;
+int small_reward = 50;
+int big_puff = 400;
+int small_puff = 50;
+long iti = 2000;
   
-  long big_reward;
-  long small_reward;
-  long big_puff;
-  long small_puff;
-  long iti;
-
-} fixed;
 
 void setup() {
   Serial.begin(115200);
   Serial.flush();
 
-  // LCD Initializaation
+/*
+  // MusicPlayer
+  if (! musicPlayer.begin()) {while (1);}
+  if (!SD.begin(CARDCS)) {while (1);}
+  musicPlayer.setVolume(20,20);
+*/
+
+  // LCD Initialization
   lcd.init();
   lcd.clear();
   lcd.backlight();
   lcd.setCursor(0, 0); lcd.print("Ready");
   lcd.setCursor(0, 3); lcd.print("Treadmill_v2.0");
   
-  // Fixed
-  fixed.big_reward = 200;
-  fixed.small_reward = 50;
-  fixed.big_puff = 200;
-  fixed.small_puff = 50;
-  fixed.iti = 2000;
-  
   // Configurable
-  configurable.session = read_config();
-  configurable.animal_code = read_config();
   configurable.n_trials = read_config();
   configurable.cs_delay = read_config();
-
-  Serial.flush();
-
-  //      Display Configurables on LCD
-  menu_categories[0] = "Session";
-  menu_categories[1] = "Animal";
-  menu_categories[2] = "n_trials";
-  menu_categories[3] = "cs_delay";
-  initialize_menu();
-  updatable_menu[0] = String(configurable.session);
-  updatable_menu[1] = String(configurable.animal_code);
-  updatable_menu[2] = String(configuration.n_trials);
-  updatable_menu[3] = (String((configuration.cs_delay/1000)) + "s");
-  update_menu();
-
-  delay(5000); // Hold on this for 5 seconds
   
   //      Initialize Menu
   menu_categories[Trial_idx] = "Trial";
@@ -132,34 +129,33 @@ void loop() {
   type = get_choice(5);
   
   updatable_menu[Trial_idx] = String(current_trial); update_menu();
-  updatable_menu[Type_idx] = trial_typenames{type}; update_menu();
+  updatable_menu[Type_idx] = trial_typenames[type]; update_menu();
   
-  prog.pulsecode(type); 
-  musicMaker.play_full_file(soundfile_list{type});
+  prog.pulse_code(type); 
   updatable_menu[Event_idx] = "Cued"; update_menu();
   updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
   
   delay(configurable.cs_delay*1000);
   
-  switch (choice) {
+  switch (type) {
     case 1: // Big Reward
-      reward_solenoid.pulse_valve(fixed.big_reward);   
+      reward_solenoid.pulse_valve(big_reward);   
       updatable_menu[Event_idx] = "REWARDED"; update_menu();
     case 2: // Small Reward
-      reward_solenoid.pulse_valve(fixed.small_reward);   
+      reward_solenoid.pulse_valve(small_reward);   
       updatable_menu[Event_idx] = "rewarded"; update_menu();
     case 3: // Big Puff
-      airpuff_solenoid.pulse_valve(fixed.big_puff);   
+      airpuff_solenoid.pulse_valve(big_puff);   
       updatable_menu[Event_idx] = "PUFFED"; update_menu();
     case 4: // Small Puff
-      airpuff_solenoid.pulse_valve(fixed.small_puff);   
+      airpuff_solenoid.pulse_valve(small_puff);   
       updatable_menu[Event_idx] = "puffed"; update_menu();
     case 5: // Nothing
       updatable_menu[Event_idx] = "zilch"; update_menu();
   }
 
   updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
-  delay(configurable.iti);
+  delay(iti);
   current_trial += 1;
   trial_start_time = millis();
 
