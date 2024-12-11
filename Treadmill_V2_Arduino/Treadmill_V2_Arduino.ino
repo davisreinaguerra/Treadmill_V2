@@ -25,6 +25,8 @@ long experiment_start_time;
 long trial_start_time;
 long current_trial;
 int type;
+bool p_cue_decision;
+bool p_deliver_decision;
 
 // Pin Assignments
 trig trig1(2);                  // D2   Trig1
@@ -51,7 +53,11 @@ struct configurable {
 
   long int n_trials;
   long int cs_delay;
+  long int cs_delay_ms;
   long int iti;
+  long int iti_ms;
+  long int p_cue;
+  long int p_deliver;
 
 } configurable;
 
@@ -78,10 +84,13 @@ void setup() {
   configurable.cs_delay = read_config();
   configurable.iti = read_config();
 
+  configurable.cs_delay_ms = configurable.cs_delay * 1000;
+  configurable.iti_ms = configurable.iti * 1000;
+
   Serial.flush();
 
   lcd.setCursor(0, 2); lcd.print("Configured"); delay(2000);
-  lcd.setCursor(0, 3); lcd.print("lets get this bread"); delay(200);
+  lcd.setCursor(0, 3); lcd.print("lets get this bread"); delay(1000);
 
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Params:");
@@ -95,7 +104,7 @@ void setup() {
   menu_categories[Trial_idx] = "Trial";
   menu_categories[Type_idx] = "Type";
   menu_categories[Event_idx] = "Event";
-  menu_categories[Time_idx] = "Time (s)";
+  menu_categories[Time_idx] = "Elasped (s)";
   initialize_menu();
 
   // Photometry Ready ON Signal
@@ -114,33 +123,54 @@ void loop() {
   updatable_menu[Trial_idx] = String(current_trial); update_menu();
   updatable_menu[Type_idx] = trial_typenames[type-1]; update_menu();
   Serial.flush();
-  Serial.println(String(type));
-  prog.pulse_code(type); 
-  updatable_menu[Event_idx] = "Cued"; update_menu();
-  updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
   
-  delay(configurable.cs_delay*1000);
+  // play the cue 90% of the time
+  p_cue_decision = enforce_prob(configurable.p_cue);
+  switch(p_cue_decision) {
+    case true:
+      Serial.println(String(type));
+      prog.pulse_code(type);
+      updatable_menu[Event_idx] = "Cued"; update_menu();
+      updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
+      break;
+    case false:
+      updatable_menu[Event_idx] = "Uncued"; update_menu();
+      updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
+      break;
+  }
   
-  switch (type) {
-    case 1: // Big Reward
-      reward_solenoid.pulse_valve(big_reward);
-      break;   
-    case 2: // Small Reward
-      reward_solenoid.pulse_valve(small_reward);
-      break;   
-    case 3: // Big Puff
-      airpuff_solenoid.pulse_valve(big_puff);
-      break;   
-    case 4: // Small Puff
-      airpuff_solenoid.pulse_valve(small_puff);
-      break;   
-    case 5: // Nothing
+  delay(configurable.cs_delay_ms);
+
+  // Deliver the event 90% of the time
+  p_deliver_decision = enforce_prob(configurable.p_deliver);
+  switch(p_deliver_decision) {
+    case true:
+      switch (type) {
+        case 1: // Big Reward
+          reward_solenoid.pulse_valve(big_reward);
+          break;   
+        case 2: // Small Reward
+          reward_solenoid.pulse_valve(small_reward);
+          break;   
+        case 3: // Big Puff
+          airpuff_solenoid.pulse_valve(big_puff);
+          break;   
+        case 4: // Small Puff
+          airpuff_solenoid.pulse_valve(small_puff);
+          break;   
+        case 5: // Nothing
+          break;
+      }
+      updatable_menu[Event_idx] = "Delivered"; update_menu();
+      updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
+      break;
+    case false:
+      updatable_menu[Event_idx] = "Omitted"; update_menu();
+      updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
       break;
   }
 
-  updatable_menu[Event_idx] = "iti"; update_menu();
-  updatable_menu[Time_idx] = String((millis() - experiment_start_time)/1000); update_menu();
-  delay(configurable.iti*1000);
+  delay(configurable.iti_ms);
   current_trial += 1;
   trial_start_time = millis();
 
