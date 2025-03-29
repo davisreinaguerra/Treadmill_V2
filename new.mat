@@ -1,0 +1,196 @@
+Treadmill V2 (Davis)
+by Davis Reina-Guerra, davisrg.neuro@gmail.com
+Wallace Lab, Boston University  Anatomy & Neurobiology
+
+session_name = "sessionX";
+animal_code = "animalX";
+autostop =  true;
+
+% Set up Labjack
+grab_jack
+set_input_mode
+get_DAC_addresses
+
+% get directory name to save files to
+save_dir = uigetdir("Data\Davis\", "Where would you like to save the data?");
+
+% DAC0 Streamout
+DAC0_amplitude = 0.14;
+DAC0_frequency = 167 ; % Hz
+DAC0_baseline = 0.6;
+
+DAC0_vals = generateDACcosinewave( ...
+    DAC0_amplitude, ...
+    DAC0_frequency, ...
+    DAC0_baseline ...
+    );
+
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT0_TARGET', DAC0_addy);
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT0_BUFFER_SIZE', 512);
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT0_ENABLE', 1);
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT0_LOOP_SIZE', length(DAC0_vals));
+for i = 1:length(DAC0_vals)
+    LabJack.LJM.eWriteName(handle, 'STREAM_OUT0_BUFFER_F32', DAC0_vals(i));
+end   
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT0_SET_LOOP', 1);
+
+fprintf("DAC0 set to stream at %d Hz with amplitude %.2f V and baseline %.2f V", DAC0_frequency, DAC0_amplitude, DAC0_baseline)
+
+% DAC1 Streamout
+DAC1_amplitude = 0.13; 
+DAC1_frequency = 223; % Hz
+DAC1_baseline = 2.6;
+
+DAC1_vals = generateDACcosinewave( ...
+    DAC1_amplitude, ...
+    DAC1_frequency, ...
+    DAC1_baseline ...
+    );
+
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT1_TARGET', DAC1_addy);
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT1_BUFFER_SIZE', 512);
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT1_ENABLE', 1);
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT1_LOOP_SIZE', length(DAC1_vals));
+for i = 1:length(DAC1_vals)
+    LabJack.LJM.eWriteName(handle, 'STREAM_OUT1_BUFFER_F32', DAC1_vals(i));
+end
+LabJack.LJM.eWriteName(handle, 'STREAM_OUT1_SET_LOOP', 1);
+
+fprintf("DAC1 set to stream at %d Hz with amplitude %.2f V and baseline %.2f V", DAC1_frequency, DAC1_amplitude, DAC1_baseline)
+% Save
+home = pwd;
+cd(save_dir)
+save( ...
+    "configset.mat", ...
+    ... % Configurables
+    "session_name", ...
+    "animal_code", ...
+    ... % DAC Values
+    "DAC0_amplitude", ...
+    "DAC0_frequency", ...
+    "DAC0_baseline", ...
+    "DAC1_amplitude", ...
+    "DAC1_frequency", ...
+    "DAC1_baseline" ...
+    )
+
+disp("Photometry Configuration Saved to configset.mat")
+
+
+% Read Configuration ________________________________________________________
+numAddressesIn = 17;
+aScanListNames = NET.createArray('System.String', numAddressesIn);
+
+aScanListNames(1) = 'AIN0';         % photodetector green
+aScanListNames(2) = 'AIN1';         % photodetector red
+aScanListNames(3) = 'AIN2';         % DAC0 167Hz Mod Copy (green)
+aScanListNames(4) = 'AIN3';         % DAC1 223Hz Mod Copy (red)
+aScanListNames(5) = 'DIO0';         % Trig1 (Arduino D2)
+aScanListNames(6) = 'DIO1';         % Trig2 (Arduino D5)
+aScanListNames(7) = 'DIO2';         % CueL (Arduino D8)
+aScanListNames(8) = 'DIO3';         % CueR (Arduino D9)
+aScanListNames(9) = 'DIO4';         % Lick (Arduino D10)
+aScanListNames(10) = 'DIO5';        % Prog (Arduino D11)
+aScanListNames(11) = 'DIO6';        % Reward (Arduino D12)
+aScanListNames(12) = 'DIO7';        % Airpuff (Arduino D13)
+aScanListNames(13) = 'DIO8';        % Rotary A
+aScanListNames(14) = 'DIO9';        % Rotary B
+aScanListNames(15) = 'DIO10';       % Rotary I
+aScanListNames(16) = 'DIO11';       % Opto Copy
+aScanListNames(17) = 'DIO12';       % TRIGIN
+
+%   Scan list addresses to stream
+aScanList = NET.createArray('System.Int32', (numAddressesIn + 2));
+aTypes = NET.createArray('System.Int32', numAddressesIn);
+LabJack.LJM.NamesToAddresses(numAddressesIn, aScanListNames, aScanList, aTypes);
+
+%   Add the scan list outputs to the end of the scan list
+aScanList(numAddressesIn+1) = 4800;  % STREAM_OUT0
+aScanList(numAddressesIn+2) = 4801;  % STREAM_OUT1
+
+scanRate = double(2000);  % Scans per second
+scansPerRead = 2000;  % Scans returned by eStreamRead call
+
+aData = NET.createArray('System.Double', numAddressesIn*scansPerRead);
+
+% dictate the range of values for analog inputs
+numFrames = 11;
+
+aNames = NET.createArray('System.String', numFrames);
+aNames(1) = 'AIN_ALL_NEGATIVE_CH';
+aNames(2) = 'AIN0_RANGE';
+aNames(3) = 'AIN1_RANGE';
+aNames(4) = 'AIN2_RANGE';
+aNames(5) = 'AIN3_RANGE';
+aNames(6) = 'AIN4_RANGE';
+aNames(7) = 'AIN5_RANGE';
+aNames(8) = 'AIN6_RANGE';
+aNames(9) = 'AIN7_RANGE';
+aNames(10) = 'STREAM_SETTLING_US';
+aNames(11) = 'STREAM_RESOLUTION_INDEX';
+
+aValues = NET.createArray('System.Double', numFrames);
+aValues(1) = LJM_CONSTANTS.GND;
+aValues(2) = 10.0;
+aValues(3) = 10.0;
+aValues(4) = 10.0;
+aValues(5) = 10.0;
+aValues(6) = 10.0;
+aValues(7) = 10.0;
+aValues(8) = 10.0;
+aValues(9) = 10.0;
+aValues(10) = 0;
+aValues(11) = 0;
+
+%Configure and start stream (eStreamStart)
+numAddresses = aScanList.Length;
+[~, scanRate] = LabJack.LJM.eStreamStart(handle, scansPerRead, numAddresses, aScanList, scanRate);
+disp(['Stream ready with a scan rate of ' num2str(scanRate) ' Hz.'])
+maxRequests = 3600;
+totalScans = 0;
+curSkippedSamples = 0;
+totalSkippedSamples = 0;
+DATAM = zeros(maxRequests,scanRate*numAddressesIn);
+cd(save_dir);
+
+disp("Run Experiment in Processing to Get Started")
+
+while true
+    [~, devScanBL, ljmScanBL] = LabJack.LJM.eStreamRead(handle, aData, 0, 0);
+    totalScans = totalScans + scansPerRead;
+    DATAM(i,:)=aData.double;
+    temp = aData.double;
+    trigstate = mean(temp(numAddressesIn:numAddressesIn:end));
+    if trigstate > 0.5
+        break
+    end
+end
+disp("Started Read")
+
+for i = 1:maxRequests
+    [~, devScanBL, ljmScanBL] = LabJack.LJM.eStreamRead(handle, aData, 0, 0);
+    totalScans = totalScans + scansPerRead;
+    DATAM(i,:)=aData.double;
+    temp = aData.double;
+    save(sprintf('Raw_%d.mat',i+1000),'temp')
+    curSkippedSamples = sum(double(aData) == -9999.0);
+    totalSkippedSamples = totalSkippedSamples + curSkippedSamples;
+    trigstate = mean(temp(numAddressesIn:numAddressesIn:end));
+    if autostop == true
+        if trigstate < 0.5
+            break
+        end
+    end
+end
+
+disp("Complete")
+
+LabJack.LJM.eStreamStop(handle); % stop stream
+LabJack.LJM.Close(handle); % close handle
+
+disp("LabJack Closed")
+
+cd(home);
+
+%clear
+clc
